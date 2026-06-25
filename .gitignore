@@ -1,3 +1,5 @@
+__pycache__
 *.csv
 taxi.parquet
 .tmp/*
+random_forest.pkl
