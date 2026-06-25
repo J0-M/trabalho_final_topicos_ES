@@ -161,7 +161,7 @@ def train_model(model):
 def main():
 
     model = XGBRegressor(
-        n_estimators=300,
+        n_estimators=100,
         learning_rate=0.05,
         max_depth=8,
         subsample=0.8,

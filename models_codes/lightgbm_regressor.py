@@ -7,14 +7,14 @@ import pandas as pd
 
 from datetime import datetime
 
-from sklearn.ensemble import RandomForestRegressor
+from lightgbm import LGBMRegressor
 
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error, r2_score
 
 DATA_PATH = "../data/taxi_demand_processed.parquet"
-MODEL_DIR = "../models/random_forest"
-MODEL_NAME = "random_forest"
+MODEL_DIR = "../models/lightgbm"
+MODEL_NAME = "lightgbm"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -143,9 +143,11 @@ def train_model(model):
         "best_R2": float(best_r2),
 
         "n_estimators": model.n_estimators,
+        "learning_rate": model.learning_rate,
         "max_depth": model.max_depth,
-        "min_samples_split": model.min_samples_split,
-        "min_samples_leaf": model.min_samples_leaf
+        "num_leaves": model.num_leaves,
+        "subsample": model.subsample,
+        "colsample_bytree": model.colsample_bytree
     }
 
     with open(results_path, "wb") as f:
@@ -159,15 +161,17 @@ def train_model(model):
     
 def main():
 
-    model = RandomForestRegressor(
-        n_estimators=200,
-        max_depth=20,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        max_features="sqrt",
-        bootstrap=True,
+    model = LGBMRegressor(
+        objective="regression",
+        n_estimators=100,
+        learning_rate=0.05,
+        max_depth=8,
+        num_leaves=31,
+        subsample=0.8,
+        colsample_bytree=0.8,
         random_state=42,
-        n_jobs=-1
+        n_jobs=-1,
+        verbosity=-1
     )
     
     results = train_model(model=model)
