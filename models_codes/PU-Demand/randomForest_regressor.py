@@ -13,8 +13,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-DATA_PATH = "../data/taxi_demand_processed.parquet"
-MODEL_DIR = "../models/random_forest"
+DATA_PATH = "../../data/taxi_demand_processed_pu.parquet"
+MODEL_DIR = "../../models/pu-demand/random_forest"
 MODEL_NAME = "random_forest"
 
 os.makedirs(MODEL_DIR, exist_ok=True)

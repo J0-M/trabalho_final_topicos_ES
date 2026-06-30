@@ -8,14 +8,14 @@ import pandas as pd
 from datetime import datetime
 from itertools import product
 
-from xgboost import XGBRegressor # árvores de decisão não precisam de normalização, logo sem StandardScaler
+from lightgbm import LGBMRegressor
 
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-DATA_PATH = "../data/taxi_demand_processed.parquet"
-MODEL_DIR = "../models/xgboost"
-MODEL_NAME = "xgboost"
+DATA_PATH = "../../data/taxi_demand_processed_pu.parquet"
+MODEL_DIR = "../../models/pu-demand/lightgbm"
+MODEL_NAME = "lightgbm"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -86,24 +86,27 @@ def train_model(combinations):
     best_metrics = None
     best_r2 = -np.inf
     
-    for n_estimators, max_depth, learning_rate in combinations:
+    for n_estimators, learning_rate, max_depth, num_leaves in combinations:
         print("\n==============================")
         print(
             f"Testando: "
             f"n_estimators={n_estimators}, "
+            f"learning_rate={learning_rate}, "
             f"max_depth={max_depth}, "
-            f"lr={learning_rate}"
+            f"num_leaves={num_leaves}"
         )
         
-        model = XGBRegressor(
+        model = LGBMRegressor(
+            objective="regression",
             n_estimators=n_estimators,
-            max_depth=max_depth,
             learning_rate=learning_rate,
+            max_depth=max_depth,
+            num_leaves=num_leaves,
             subsample=0.8,
             colsample_bytree=0.8,
-            objective="reg:squarederror",
             random_state=42,
-            n_jobs=-1
+            n_jobs=-1,
+            verbosity=-1
         )
 
         fold_r2 = []
@@ -124,10 +127,10 @@ def train_model(combinations):
             predictions = model.predict(X_val_fold)
             metrics = calculate_metrics(y_val_fold, predictions)
 
-            fold_rmse.append(metrics["RMSE"])
             fold_r2.append(metrics["R2"])
+            fold_rmse.append(metrics["RMSE"])
             fold_rae.append(metrics["RAE"])
-
+            
             print(f"RMSE: {metrics['RMSE']:.4f}")
             print(f"R2:   {metrics['R2']:.4f}")
             print(f"RAE:  {metrics['RAE']:.4f}")
@@ -139,16 +142,17 @@ def train_model(combinations):
             best_r2 = mean_r2
             best_params = {
                 "n_estimators": n_estimators,
+                "learning_rate": learning_rate,
                 "max_depth": max_depth,
-                "learning_rate": learning_rate
+                "num_leaves": num_leaves
             }
             best_metrics = {
                 "rmse_mean": np.mean(fold_rmse),
                 "rmse_std": np.std(fold_rmse),
-
+                
                 "r2_mean": np.mean(fold_r2),
                 "r2_std": np.std(fold_r2),
-
+                
                 "rae_mean": np.mean(fold_rae),
                 "rae_std": np.std(fold_rae)
             }
@@ -156,12 +160,13 @@ def train_model(combinations):
     print("Melhores Parâmetros: ")
     print(best_params)
     
-    final_model = XGBRegressor(
+    final_model = LGBMRegressor(
+        objective="regression",
         subsample=0.8,
         colsample_bytree=0.8,
-        objective="reg:squarederror",
         random_state=42,
         n_jobs=-1,
+        verbosity=-1,
         **best_params
     )
     
@@ -197,14 +202,16 @@ def main():
     
     param_grid = {
         "n_estimators": [50, 100],
+        "learning_rate": [0.05, 0.1],
         "max_depth": [6, 8],
-        "learning_rate": [0.05, 0.1]
+        "num_leaves": [31, 63]
     }
     
     combinations = list(product(
         param_grid["n_estimators"],
+        param_grid["learning_rate"],
         param_grid["max_depth"],
-        param_grid["learning_rate"]
+        param_grid["num_leaves"]
     ))
     
     results = train_model(combinations)
