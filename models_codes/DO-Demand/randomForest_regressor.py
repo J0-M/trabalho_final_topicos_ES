@@ -8,14 +8,14 @@ import pandas as pd
 from datetime import datetime
 from itertools import product
 
-from xgboost import XGBRegressor # árvores de decisão não precisam de normalização, logo sem StandardScaler
+from sklearn.ensemble import RandomForestRegressor
 
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-DATA_PATH = "../../data/taxi_demand_processed_pu.parquet"
-MODEL_DIR = "../../models/pu-demand/xgboost"
-MODEL_NAME = "xgboost"
+DATA_PATH = "../../data/taxi_demand_processed_do.parquet"
+MODEL_DIR = "../../models/do-demand/random_forest"
+MODEL_NAME = "random_forest"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -64,7 +64,7 @@ def train_model(combinations):
 
     X = df.drop(
         columns=[
-            "pickup_hour",
+            "dropoff_hour",
             "demand"
         ]
     )
@@ -86,22 +86,22 @@ def train_model(combinations):
     best_metrics = None
     best_r2 = -np.inf
     
-    for n_estimators, max_depth, learning_rate in combinations:
+    for n_estimators, max_depth, min_samples_leaf in combinations:
         print("\n==============================")
         print(
             f"Testando: "
             f"n_estimators={n_estimators}, "
             f"max_depth={max_depth}, "
-            f"lr={learning_rate}"
+            f"min_sample_leaf={min_samples_leaf}"
         )
         
-        model = XGBRegressor(
+        model = RandomForestRegressor(
             n_estimators=n_estimators,
             max_depth=max_depth,
-            learning_rate=learning_rate,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            objective="reg:squarederror",
+            min_samples_leaf=min_samples_leaf,
+            min_samples_split=5,
+            max_features="sqrt",
+            bootstrap=True,
             random_state=42,
             n_jobs=-1
         )
@@ -140,7 +140,7 @@ def train_model(combinations):
             best_params = {
                 "n_estimators": n_estimators,
                 "max_depth": max_depth,
-                "learning_rate": learning_rate
+                "min_samples_leaf": min_samples_leaf
             }
             best_metrics = {
                 "rmse_mean": np.mean(fold_rmse),
@@ -156,10 +156,10 @@ def train_model(combinations):
     print("Melhores Parâmetros: ")
     print(best_params)
     
-    final_model = XGBRegressor(
-        subsample=0.8,
-        colsample_bytree=0.8,
-        objective="reg:squarederror",
+    final_model = RandomForestRegressor(
+        min_samples_split=5,
+        max_features="sqrt",
+        bootstrap=True,
         random_state=42,
         n_jobs=-1,
         **best_params
@@ -197,14 +197,14 @@ def main():
     
     param_grid = {
         "n_estimators": [50, 100],
-        "max_depth": [6, 8],
-        "learning_rate": [0.05, 0.1]
+        "max_depth": [10, 15, 20],
+        "min_samples_leaf": [1, 2],
     }
     
     combinations = list(product(
         param_grid["n_estimators"],
         param_grid["max_depth"],
-        param_grid["learning_rate"]
+        param_grid["min_samples_leaf"]
     ))
     
     results = train_model(combinations)
