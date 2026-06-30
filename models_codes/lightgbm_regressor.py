@@ -10,7 +10,7 @@ from itertools import product
 
 from lightgbm import LGBMRegressor
 
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 DATA_PATH = "../data/taxi_demand_processed.parquet"
@@ -71,6 +71,10 @@ def train_model(combinations):
 
     y = df["demand"]
 
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, shuffle=True, random_state=42)
+    
+    print(f"Registros para CV (Treino/Validação): {len(X_train_val)}")
+    print(f"Registros para Teste Final: {len(X_test)}")
 
     kf = KFold(
         n_splits=5,
@@ -78,7 +82,6 @@ def train_model(combinations):
         random_state=42
     )
 
-    best_model = None
     best_params = None
     best_metrics = None
     best_r2 = -np.inf
@@ -110,30 +113,30 @@ def train_model(combinations):
         fold_rmse = []
         fold_rae = []
         
-        for fold, (train_idx, test_idx) in enumerate(kf.split(X), start=1):
+        for fold, (train_idx, val_idx) in enumerate(kf.split(X_train_val), start=1):
 
             print(f"\n===== Fold {fold} =====")
 
-            X_train = X.iloc[train_idx]
-            X_test = X.iloc[test_idx]
+            X_train_fold = X_train_val.iloc[train_idx]
+            X_val_fold = X_train_val.iloc[val_idx]
 
-            y_train = y.iloc[train_idx]
-            y_test = y.iloc[test_idx]
+            y_train_fold = y_train_val.iloc[train_idx]
+            y_val_fold = y_train_val.iloc[val_idx]
 
-            model.fit(X_train, y_train)
-            predictions = model.predict(X_test)
-            metrics = calculate_metrics(y_test, predictions)
+            model.fit(X_train_fold, y_train_fold)
+            predictions = model.predict(X_val_fold)
+            metrics = calculate_metrics(y_val_fold, predictions)
 
-            fold_rmse.append(metrics["RMSE"])
             fold_r2.append(metrics["R2"])
+            fold_rmse.append(metrics["RMSE"])
             fold_rae.append(metrics["RAE"])
-
+            
             print(f"RMSE: {metrics['RMSE']:.4f}")
             print(f"R2:   {metrics['R2']:.4f}")
             print(f"RAE:  {metrics['RAE']:.4f}")
         
         mean_r2 = np.mean(fold_r2)
-        print("R2 médio:", mean_r2)
+        print(f"R2 médio: {mean_r2:.4f}")
 
         if mean_r2 > best_r2:
             best_r2 = mean_r2
@@ -146,35 +149,50 @@ def train_model(combinations):
             best_metrics = {
                 "rmse_mean": np.mean(fold_rmse),
                 "rmse_std": np.std(fold_rmse),
-
+                
                 "r2_mean": np.mean(fold_r2),
                 "r2_std": np.std(fold_r2),
-
+                
                 "rae_mean": np.mean(fold_rae),
                 "rae_std": np.std(fold_rae)
             }
-            best_model = copy.deepcopy(model)
 
-    with open(model_path, "wb") as f:
-        pickle.dump(best_model, f)
-
+    print("Melhores Parâmetros: ")
+    print(best_params)
+    
+    final_model = LGBMRegressor(
+        objective="regression",
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        n_jobs=-1,
+        verbosity=-1,
+        **best_params
+    )
+    
+    final_model.fit(X_train_val, y_train_val)
+    
+    final_predictions = final_model.predict(X_test)
+    final_metrics = calculate_metrics(y_test, final_predictions)
+    
     results = {
+        "best_r2": best_r2,
+        "best_params": best_params,
         "rmse_mean": best_metrics["rmse_mean"],
         "rmse_std": best_metrics["rmse_std"],
-
         "r2_mean": best_metrics["r2_mean"],
         "r2_std": best_metrics["r2_std"],
-
         "rae_mean": best_metrics["rae_mean"],
         "rae_std": best_metrics["rae_std"],
-
-        "best_params": best_params
+        "test_metrics": final_metrics
     }
 
+    with open(model_path, "wb") as f:
+        pickle.dump(final_model, f)
+        
     with open(results_path, "wb") as f:
         pickle.dump(results, f)
 
-    print(f"\nMelhor R2: {best_r2:.4f}")
     print(f"Modelo salvo em: {model_path}")
     print(f"Resultados salvos em: {results_path}")
 

@@ -9,7 +9,7 @@ from datetime import datetime
 
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 
@@ -89,6 +89,8 @@ def train_model(model):
     )
 
     y = df["demand"]
+    
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, shuffle=True, random_state=42)
 
     kf = KFold(
         n_splits=5,
@@ -100,29 +102,25 @@ def train_model(model):
     r2_scores = []
     rae_scores = []
 
-    best_model = None
-    best_scaler = None
-    best_r2 = -np.inf
-
-    for fold, (train_idx, test_idx) in enumerate(kf.split(X), start=1):
+    for fold, (train_idx, val_idx) in enumerate(kf.split(X_train_val), start=1):
 
         print(f"\n===== Fold {fold} =====")
 
-        X_train = X.iloc[train_idx]
-        X_test = X.iloc[test_idx]
+        X_train_fold = X_train_val.iloc[train_idx]
+        X_val_fold = X_train_val.iloc[val_idx]
 
-        y_train = y.iloc[train_idx]
-        y_test = y.iloc[test_idx]
+        y_train_fold = y_train_val.iloc[train_idx]
+        y_val_fold = y_train_val.iloc[val_idx]
 
         scaler = StandardScaler()
 
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
+        X_train_fold_scaled = scaler.fit_transform(X_train_fold)
+        X_val_fold_scaled = scaler.transform(X_val_fold)
 
-        model.fit(X_train, y_train)
+        model.fit(X_train_fold_scaled, y_train_fold)
 
-        predictions = model.predict(X_test)
-        metrics = calculate_metrics(y_test, predictions)
+        predictions = model.predict(X_val_fold_scaled)
+        metrics = calculate_metrics(y_val_fold, predictions)
 
         rmse_scores.append(metrics["RMSE"])
         r2_scores.append(metrics["R2"])
@@ -131,22 +129,22 @@ def train_model(model):
         print(f"RMSE: {metrics['RMSE']:.4f}")
         print(f"R2:   {metrics['R2']:.4f}")
         print(f"RAE:  {metrics['RAE']:.4f}")
-
-        if metrics["R2"] > best_r2:
-            best_r2 = metrics["R2"]
-            best_model = copy.deepcopy(model)
-            best_scaler = copy.deepcopy(scaler)
-
-    with open(model_path, "wb") as f:
-        pickle.dump(best_model, f)
-
-    with open(scaler_path, "wb") as f:
-        pickle.dump(best_scaler, f)
         
     worst = np.argmin(r2_scores)
     rmse_scores.pop(worst)
     r2_scores.pop(worst)
     rae_scores.pop(worst) # para tratar fold outlier
+    
+    final_scaler = StandardScaler()
+    final_model = LinearRegression()
+    
+    X_train_val_scaled = final_scaler.fit_transform(X_train_val)
+    X_test_scaled = final_scaler.transform(X_test)
+    
+    final_model.fit(X_train_val_scaled, y_train_val)
+    
+    final_predictions = final_model.predict(X_test_scaled)
+    final_metrics = calculate_metrics(y_test, final_predictions)
 
     results = {
 
@@ -159,14 +157,19 @@ def train_model(model):
         "rae_mean": float(np.mean(rae_scores)),
         "rae_std": float(np.std(rae_scores)),
 
-        "best_R2": float(best_r2)
+        "test_metrics": final_metrics
     }
+
+    with open(model_path, "wb") as f:
+        pickle.dump(final_model, f)
+
+    with open(scaler_path, "wb") as f:
+        pickle.dump(final_scaler, f)
 
     with open(results_path, "wb") as f:
         pickle.dump(results, f)
 
-    print(f"\nMelhor R2: {best_r2:.4f}")
-    print(f"Modelo salvo em: {model_path}")
+    print(f"\nModelo salvo em: {model_path}")
     print(f"Scaler salvo em: {scaler_path}")
     print(f"Resultados salvos em: {results_path}")
 
