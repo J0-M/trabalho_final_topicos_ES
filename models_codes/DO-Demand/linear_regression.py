@@ -13,9 +13,9 @@ from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 
-DATA_PATH = "../data/taxi_demand_processed.parquet"
+DATA_PATH = "../../data/taxi_demand_processed_do.parquet"
 
-MODEL_DIR = "../models/linear_regression"
+MODEL_DIR = "../../models/do-demand/linear_regression"
 MODEL_NAME = "linear_regression"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -77,14 +77,14 @@ def train_model(model):
 
     X = df.drop(
         columns=[
-            "pickup_hour",
+            "dropoff_hour",
             "demand"
         ]
     )
 
     X = pd.get_dummies(
         X,
-        columns=["PULocationID"],
+        columns=["DOLocationID"],
         drop_first=True
     )
 

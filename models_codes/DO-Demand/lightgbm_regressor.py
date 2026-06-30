@@ -13,8 +13,8 @@ from lightgbm import LGBMRegressor
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-DATA_PATH = "../data/taxi_demand_processed.parquet"
-MODEL_DIR = "../models/lightgbm"
+DATA_PATH = "../../data/taxi_demand_processed_do.parquet"
+MODEL_DIR = "../../models/do-demand/lightgbm"
 MODEL_NAME = "lightgbm"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -64,7 +64,7 @@ def train_model(combinations):
 
     X = df.drop(
         columns=[
-            "pickup_hour",
+            "dropoff_hour",
             "demand"
         ]
     )

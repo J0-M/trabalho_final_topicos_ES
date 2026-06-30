@@ -13,8 +13,8 @@ from xgboost import XGBRegressor # árvores de decisão não precisam de normali
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-DATA_PATH = "../data/taxi_demand_processed.parquet"
-MODEL_DIR = "../models/xgboost"
+DATA_PATH = "../../data/taxi_demand_processed_pu.parquet"
+MODEL_DIR = "../../models/pu-demand/xgboost"
 MODEL_NAME = "xgboost"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
