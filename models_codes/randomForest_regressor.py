@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from datetime import datetime
+from itertools import product
 
 from sklearn.ensemble import RandomForestRegressor
 
@@ -42,29 +43,20 @@ def calculate_metrics(y_true, y_pred):
         "RAE": rae_score
     }
 
-def train_model(model):
+def train_model(combinations):
     
     model_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}.pkl")
     results_path = os.path.join(MODEL_DIR, "results.pkl")
 
-    if os.path.exists(model_path):
-        
-        with open(model_path, "rb") as f:
-            model = pickle.load(f)
-
-        print("Modelo carregado com sucesso.")
-
+    if os.path.exists(results_path):
         if os.path.exists(results_path):
 
             with open(results_path, "rb") as f:
                 results = pickle.load(f)
 
-            print("\nResultados armazenados:")
+            print("Resultados carregados.")
 
-            for key, value in results.items():
-                print(f"{key}: {value}")
-
-        return model
+        return results
 
     print("Carregando dataset...")
     df = pd.read_parquet(DATA_PATH)
@@ -86,91 +78,127 @@ def train_model(model):
         random_state=42
     )
 
-    rmse_scores = []
-    r2_scores = []
-    rae_scores = []
-
     best_model = None
+    best_params = None
+    best_metrics = None
     best_r2 = -np.inf
+    
+    for n_estimators, max_depth, min_samples_leaf in combinations:
+        print("\n==============================")
+        print(
+            f"Testando: "
+            f"n_estimators={n_estimators}, "
+            f"max_depth={max_depth}, "
+            f"min_sample_leaf={min_samples_leaf}"
+        )
+        
+        model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            min_samples_split=5,
+            max_features="sqrt",
+            bootstrap=True,
+            random_state=42,
+            n_jobs=-1
+        )
 
-    for fold, (train_idx, test_idx) in enumerate(kf.split(X), start=1):
+        fold_r2 = []
+        fold_rmse = []
+        fold_rae = []
+        
+        for fold, (train_idx, test_idx) in enumerate(kf.split(X), start=1):
 
-        print(f"\n===== Fold {fold} =====")
+            print(f"\n===== Fold {fold} =====")
 
-        X_train = X.iloc[train_idx]
-        X_test = X.iloc[test_idx]
+            X_train = X.iloc[train_idx]
+            X_test = X.iloc[test_idx]
 
-        y_train = y.iloc[train_idx]
-        y_test = y.iloc[test_idx]
+            y_train = y.iloc[train_idx]
+            y_test = y.iloc[test_idx]
 
-        model.fit(X_train, y_train)
-        predictions = model.predict(X_test)
-        metrics = calculate_metrics(y_test, predictions)
+            model.fit(X_train, y_train)
+            predictions = model.predict(X_test)
+            metrics = calculate_metrics(y_test, predictions)
 
-        rmse_scores.append(metrics["RMSE"])
-        r2_scores.append(metrics["R2"])
-        rae_scores.append(metrics["RAE"])
+            fold_rmse.append(metrics["RMSE"])
+            fold_r2.append(metrics["R2"])
+            fold_rae.append(metrics["RAE"])
 
-        print(f"RMSE: {metrics['RMSE']:.4f}")
-        print(f"R2:   {metrics['R2']:.4f}")
-        print(f"RAE:  {metrics['RAE']:.4f}")
+            print(f"RMSE: {metrics['RMSE']:.4f}")
+            print(f"R2:   {metrics['R2']:.4f}")
+            print(f"RAE:  {metrics['RAE']:.4f}")
+        
+        mean_r2 = np.mean(fold_r2)
+        print("R2 médio:", mean_r2)
 
-        if metrics["R2"] > best_r2:
-            best_r2 = metrics["R2"]
+        if mean_r2 > best_r2:
+            best_r2 = mean_r2
+            best_params = {
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf
+            }
+            best_metrics = {
+                "rmse_mean": np.mean(fold_rmse),
+                "rmse_std": np.std(fold_rmse),
+
+                "r2_mean": np.mean(fold_r2),
+                "r2_std": np.std(fold_r2),
+
+                "rae_mean": np.mean(fold_rae),
+                "rae_std": np.std(fold_rae)
+            }
             best_model = copy.deepcopy(model)
-
-
-    print("\n===== RESULTADO FINAL =====")
-
-    print(f"RMSE médio: {np.mean(rmse_scores):.4f} ± {np.std(rmse_scores):.4f}")
-    print(f"R2 médio: {np.mean(r2_scores):.4f} ± {np.std(r2_scores):.4f}")
-    print(f"RAE médio: {np.mean(rae_scores):.4f} ± {np.std(rae_scores):.4f}")
 
     with open(model_path, "wb") as f:
         pickle.dump(best_model, f)
 
     results = {
+        "rmse_mean": best_metrics["rmse_mean"],
+        "rmse_std": best_metrics["rmse_std"],
 
-        "RMSE_mean": float(np.mean(rmse_scores)),
-        "RMSE_std": float(np.std(rmse_scores)),
+        "r2_mean": best_metrics["r2_mean"],
+        "r2_std": best_metrics["r2_std"],
 
-        "R2_mean": float(np.mean(r2_scores)),
-        "R2_std": float(np.std(r2_scores)),
+        "rae_mean": best_metrics["rae_mean"],
+        "rae_std": best_metrics["rae_std"],
 
-        "RAE_mean": float(np.mean(rae_scores)),
-        "RAE_std": float(np.std(rae_scores)),
-
-        "best_R2": float(best_r2),
-
-        "n_estimators": model.n_estimators,
-        "max_depth": model.max_depth,
-        "min_samples_split": model.min_samples_split,
-        "min_samples_leaf": model.min_samples_leaf
+        "best_params": best_params
     }
 
     with open(results_path, "wb") as f:
         pickle.dump(results, f)
 
-    print(f"\nMelhor R²: {best_r2:.4f}")
+    print(f"\nMelhor R2: {best_r2:.4f}")
     print(f"Modelo salvo em: {model_path}")
     print(f"Resultados salvos em: {results_path}")
 
     return results
     
 def main():
-
-    model = RandomForestRegressor(
-        n_estimators=200,
-        max_depth=20,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        max_features="sqrt",
-        bootstrap=True,
-        random_state=42,
-        n_jobs=-1
-    )
     
-    results = train_model(model=model)
+    param_grid = {
+        "n_estimators": [50, 100],
+        "max_depth": [10, 15, 20],
+        "min_samples_leaf": [1, 2],
+    }
+    
+    combinations = list(product(
+        param_grid["n_estimators"],
+        param_grid["max_depth"],
+        param_grid["min_samples_leaf"]
+    ))
+    
+    results = train_model(combinations)
+    
+    print("\n===== RESULTADO FINAL =====")
+
+    print(f"Melhores Parâmetros: {results['best_params']}")
+    
+    print(f"RMSE médio: {results['rmse_mean']:.4f} ± {results['rmse_std']:.4f}")
+    print(f"R2 médio: {results['r2_mean']:.4f} ± {results['r2_std']:.4f}")
+    print(f"RAE médio: {results['rae_mean']:.4f} ± {results['rae_std']:.4f}")
 
     return results
 
