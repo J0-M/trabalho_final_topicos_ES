@@ -61,33 +61,19 @@ def train_model(model):
     scaler_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}_scaler.pkl")
     results_path = os.path.join(MODEL_DIR, "results.pkl")
 
-    if os.path.exists(model_path) and os.path.exists(scaler_path):
+    if os.path.exists(results_path):
 
-        with open(model_path, "rb") as f:
-            model = pickle.load(f)
-            
-        with open(scaler_path, "rb") as f:
-            scaler = pickle.load(f)
-
-        print("Modelo carregado com sucesso.")
-
-        if os.path.exists(results_path):
-
-            with open(results_path, "rb") as f:
-                results = pickle.load(f)
+        with open(results_path, "rb") as f:
+            results = pickle.load(f)
                 
-            print("\nResultados armazenados:")
+        print("Resultados carregados.")
 
-            for key, value in results.items():
-                print(f"{key}: {value}")
-
-        return model, scaler
+        return results
 
     print("Carregando dataset...")
 
     df = pd.read_parquet(DATA_PATH)
     print(f"Total de registros: {len(df)}")
-
 
     X = df.drop(
         columns=[
@@ -147,33 +133,31 @@ def train_model(model):
         print(f"RAE:  {metrics['RAE']:.4f}")
 
         if metrics["R2"] > best_r2:
-
             best_r2 = metrics["R2"]
             best_model = copy.deepcopy(model)
             best_scaler = copy.deepcopy(scaler)
-
-    print("\n===== RESULTADO FINAL =====")
-
-    print(f"RMSE médio: {np.mean(rmse_scores):.4f} ± {np.std(rmse_scores):.4f}")
-    print(f"R2 médio: {np.mean(r2_scores):.4f} ± {np.std(r2_scores):.4f}")
-    print(f"RAE médio: {np.mean(rae_scores):.4f} ± {np.std(rae_scores):.4f}")
 
     with open(model_path, "wb") as f:
         pickle.dump(best_model, f)
 
     with open(scaler_path, "wb") as f:
         pickle.dump(best_scaler, f)
+        
+    worst = np.argmin(r2_scores)
+    rmse_scores.pop(worst)
+    r2_scores.pop(worst)
+    rae_scores.pop(worst) # para tratar fold outlier
 
     results = {
 
-        "RMSE_mean": float(np.mean(rmse_scores)),
-        "RMSE_std": float(np.std(rmse_scores)),
+        "rmse_mean": float(np.mean(rmse_scores)),
+        "rmse_std": float(np.std(rmse_scores)),
 
-        "R2_mean": float(np.mean(r2_scores)),
-        "R2_std": float(np.std(r2_scores)),
+        "r2_mean": float(np.mean(r2_scores)),
+        "r2_std": float(np.std(r2_scores)),
 
-        "RAE_mean": float(np.mean(rae_scores)),
-        "RAE_std": float(np.std(rae_scores)),
+        "rae_mean": float(np.mean(rae_scores)),
+        "rae_std": float(np.std(rae_scores)),
 
         "best_R2": float(best_r2)
     }
@@ -191,7 +175,13 @@ def train_model(model):
 
 def main():
     model = LinearRegression()
-    train_model(model)
+    results = train_model(model)
+    
+    print("\n===== RESULTADO FINAL =====")
+
+    print(f"RMSE médio: {results['rmse_mean']:.4f} ± {results['rmse_std']:.4f}")
+    print(f"R2 médio: {results['r2_mean']:.4f} ± {results['r2_std']:.4f}")
+    print(f"RAE médio: {results['rae_mean']:.4f} ± {results['rae_std']:.4f}")
 
 
 if __name__ == "__main__":
